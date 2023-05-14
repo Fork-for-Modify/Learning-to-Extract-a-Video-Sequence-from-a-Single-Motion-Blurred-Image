@@ -1,4 +1,4 @@
-import torch
+import torch,os
 from PIL import Image
 from torch.autograd import Variable
 
@@ -41,3 +41,16 @@ def normalize_batch(batch):
     out =batch - Variable(mean)
     out = out / Variable(std)
     return out
+
+def load_state_dict(network, ckp_path, state_dirc_key ='state_dict_G', verbose=False):
+    try:    # try directly load
+        network.load_state_dict(torch.load(ckp_path))
+    except:     # if excetion, delete running_mean & running var, then load again
+        state_dict = torch.load(ckp_path).get(state_dirc_key)
+        for k in list(state_dict.keys()):
+            if (k.find('running_mean')>0) or (k.find('running_var')>0):
+                del state_dict[k]
+                if verbose:
+                    print('\n'.join(map(str,sorted(state_dict.keys()))))
+            
+        network.load_state_dict(state_dict)
