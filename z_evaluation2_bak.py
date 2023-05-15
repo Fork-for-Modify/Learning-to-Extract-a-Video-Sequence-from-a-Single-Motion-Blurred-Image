@@ -1,8 +1,8 @@
 import os, torch, time
 from tqdm import tqdm
 from z_utils import gpu_inference_time, model_complexity,param_counting, tensor2uint, imsave, create_logger
-from z_dataloader import get_data_loaders
-from z_model import LEV
+from z_dataloader_bak import get_data_loaders
+from z_model import CE_LEV
 import pyiqa 
 from datetime import datetime
 import torch.nn.functional as F
@@ -24,11 +24,11 @@ save_img = False
 device = "cuda:0"
 
 ## dataset
-dataloader = get_data_loaders(data_dir, ce_code, batch_size, patch_size=None, tform_op=None, sigma_range=0, shuffle=False, validation_split=0, status='test', num_workers=8, pin_memory=True, prefetch_factor=1, all2CPU=True)
+dataloader = get_data_loaders(data_dir, frame_num, batch_size, patch_size=None, tform_op=None, sigma_range=0, shuffle=False, validation_split=0, status='test', num_workers=8, pin_memory=True, prefetch_factor=1, all2CPU=True)
 
 ## load model
-model = LEV(frame_n=frame_num)
-model.load_state_dicts(ckp_paths=ckp_paths)
+model = CE_LEV(sigma_range=sigma_range, ce_code_n=frame_num, frame_n=frame_num, ce_code_init=ce_code)
+model.LEV.load_state_dicts(ckp_paths=ckp_paths)
 model.to(device)
 
 ## init
@@ -52,7 +52,7 @@ metrics = {"met_psnr":met_psnr, "met_ssim":met_ssim, "met_lpips":met_lpips}
 ## eval
 model.eval()
 # calc MACs & Param. Num
-model_complexity(model=model, input_shape=(3, 200, 320), logger=logger)
+model_complexity(model=model, input_shape=(7, 3, 200, 320), logger=logger)
 # param_counting(model, logger=logger)
 
 # run
@@ -60,23 +60,25 @@ total_loss = 0.0
 total_metrics = {"met_psnr":0, "met_ssim":0, "met_lpips":0}
 time_start = time.time()
 with torch.no_grad():
-    for i, (vid, data) in enumerate(tqdm(dataloader, desc='Testing')):
+    for i, vid in enumerate(tqdm(dataloader, desc='Testing')):
         # move vid to gpu, convert to 0-1 float
-        vid, data = vid.to(device), data.to(device)
+        vid = vid.to(device).float()/255 
         N, M, C, Hx, Wx = vid.shape
+
         
         # direct inference
-        # output = model(vid)
+        # output, data, data_noisy = model(vid)
         
         # pad & crop
         sf = 20
         HX, WX = int((Hx+sf-1)/sf)*sf, int((Wx+sf-1)/sf) * \
             sf  # pad to a multiple of scale_factor (sf)
         pad_h, pad_w = HX-Hx, WX-Wx
-        data_pad = F.pad(data, [0, pad_w, 0, pad_h])
-        output = model(data_pad)
+        vid_pad = F.pad(vid, [0, pad_w, 0, pad_h])
+        output, data, data_noisy = model(vid_pad)
         output = output[:, :, :, :Hx, :Wx]
 
+        
 
         # clamp to 0-1
         output = torch.clamp(output, 0, 1)
