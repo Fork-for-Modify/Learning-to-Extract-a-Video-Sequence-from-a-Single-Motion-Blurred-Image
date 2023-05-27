@@ -221,6 +221,9 @@ class VidBlur_Dataset_all2CPU(Dataset):
             # single dataset
             vid_names = sorted(os.listdir(data_dir))
             vid_paths = [opj(data_dir, vid_name) for vid_name in vid_names]
+            if all(os.path.isfile(vid_path) for vid_path in vid_paths):
+                # data_dir is an image dir rather than a vid dir
+                vid_paths = [data_dir]
         else:
             # multiple dataset
             for data_dir_n in sorted(data_dir):
